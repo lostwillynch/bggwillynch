@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BGG Collector Standalone</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-12">
+  <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-50">
+    <div class="max-w-2xl mx-auto flex items-center justify-between">
+      <h1 class="text-xl font-bold text-amber-500 flex items-center gap-2"><span>🎲</span> BGG Direct Collector</h1>
+      <button onclick="toggleLoginModal()" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg border border-slate-600">⚙️ Mis Datos BGG</button>
+    </div>
+  </header>
+  <main class="max-w-2xl mx-auto p-4 space-y-6">
+    <section class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl space-y-4">
+      <div class="flex border-b border-slate-700 pb-2 gap-4 text-sm font-semibold">
+        <button id="tab-cam" onclick="switchTab('cam')" class="text-amber-500 border-b-2 border-amber-500 pb-2">📹 Escáner Cámara</button>
+        <button id="tab-search" onclick="switchTab('search')" class="text-slate-400 hover:text-slate-200 pb-2">🔍 Búsqueda Manual</button>
+      </div>
+      <div id="view-cam" class="space-y-3">
+        <div class="relative bg-slate-900 rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-slate-700">
+          <video id="video-preview" class="w-full h-full object-cover"></video>
+          <div id="cam-placeholder" class="absolute text-center text-slate-500 p-4">Presiona "Iniciar Cámara" para escanear.</div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="startScanner()" class="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl">Iniciar Cámara</button>
+          <button onclick="stopScanner()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold px-4 rounded-xl">Detener</button>
+        </div>
+      </div>
+      <div id="view-search" class="hidden space-y-3">
+        <div class="flex gap-2">
+          <input type="text" id="input-query" placeholder="Ej: Catan, Carcassonne..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100">
+          <button onclick="buscarJuegoManual()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-5 rounded-xl">Buscar</button>
+        </div>
+      </div>
+    </section>
+    <div id="loading" class="hidden text-center py-8">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-amber-500 border-t-transparent"></div>
+      <p class="text-sm text-slate-400 mt-2">Buscando en BGG...</p>
+    </div>
+    <section id="game-card" class="hidden bg-slate-800 rounded-2xl border border-slate-700 shadow-xl overflow-hidden">
+      <div class="md:flex">
+        <div class="md:w-1/3 bg-slate-900 flex items-center justify-center p-4">
+          <img id="game-img" src="" alt="Portada" class="max-h-64 object-contain rounded-lg">
+        </div>
+        <div class="p-6 md:w-2/3 flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex justify-between items-start">
+              <h2 id="game-title" class="text-2xl font-bold text-slate-100"></h2>
+              <span id="game-year" class="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300"></span>
+            </div>
+            <div class="flex gap-4 mt-3 text-sm text-slate-400">
+              <span id="game-players">👥 -</span>
+              <span id="game-time">⏱️ - min</span>
+            </div>
+            <p id="game-desc" class="text-sm text-slate-400 mt-3 line-clamp-3"></p>
+          </div>
+          <button id="btn-add-bgg" onclick="agregarAColeccion()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl">➕ Añadir a mi Colección BGG</button>
+        </div>
+      </div>
+    </section>
+    <div id="toast" class="hidden p-4 rounded-xl text-center text-sm font-semibold"></div>
+  </main>
+  <div id="modal-login" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-md space-y-4">
+      <h3 class="text-lg font-bold text-amber-500">Credenciales BGG</h3>
+      <div class="space-y-3">
+        <input type="text" id="bgg-user" placeholder="Usuario BGG" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100">
+        <input type="password" id="bgg-pass" placeholder="Contraseña BGG" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100">
+      </div>
+      <div class="flex justify-end gap-2">
+        <button onclick="toggleLoginModal()" class="px-4 py-2 rounded-xl text-sm bg-slate-700">Cancelar</button>
+        <button onclick="guardarCredenciales()" class="px-4 py-2 rounded-xl text-sm bg-amber-500 text-slate-950 font-bold">Guardar</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const PROXY = "https://corsproxy.io/?";
+    let codeReader = null, currentGameId = null;
+    function switchTab(t){ if(t==='cam'){ document.getElementById('view-cam').classList.remove('hidden'); document.getElementById('view-search').classList.add('hidden'); } else { stopScanner(); document.getElementById('view-cam').classList.add('hidden'); document.getElementById('view-search').classList.remove('hidden'); } }
+    function toggleLoginModal(){ const m = document.getElementById('modal-login'); m.classList.toggle('hidden'); if(!m.classList.contains('hidden')){ document.getElementById('bgg-user').value = localStorage.getItem('bgg_user')||''; document.getElementById('bgg-pass').value = localStorage.getItem('bgg_pass')||''; } }
+    function guardarCredenciales(){ localStorage.setItem('bgg_user', document.getElementById('bgg-user').value); localStorage.setItem('bgg_pass', document.getElementById('bgg-pass').value); toggleLoginModal(); showToast('Credenciales guardadas', 'success'); }
+    function startScanner(){ document.getElementById('cam-placeholder').classList.add('hidden'); codeReader = new ZXing.BrowserMultiFormatReader(); codeReader.decodeFromVideoDevice(null, 'video-preview', (r)=>{ if(r){ stopScanner(); buscarPorEAN(r.text); } }); }
+    function stopScanner(){ if(codeReader){ codeReader.reset(); document.getElementById('cam-placeholder').classList.remove('hidden'); } }
+    async function buscarPorEAN(e){ mostrarCargando(true); try{ const res = await fetch(`${PROXY}${encodeURIComponent('https://api.upcitemdb.com/prod/trial/lookup?upc='+e)}`); const d = await res.json(); if(d.items&&d.items.length>0) await buscarJuegoBGG(d.items[0].title); else { showToast('EAN no encontrado', 'error'); mostrarCargando(false); } }catch(e){ showToast('Error en código', 'error'); mostrarCargando(false); } }
+    async function buscarJuegoManual(){ const q=document.getElementById('input-query').value.trim(); if(q){ mostrarCargando(true); await buscarJuegoBGG(q); } }
+    async function buscarJuegoBGG(q){ try{ const res = await fetch(`${PROXY}${encodeURIComponent('https://boardgamegeek.com/xmlapi2/search?query='+encodeURIComponent(q)+'&type=boardgame')}`); const xml = new DOMParser().parseFromString(await res.text(), "text/xml"); const items = xml.querySelectorAll("item"); if(items.length>0) await cargarDetallesJuego(items[0].getAttribute("id")); else { showToast('Juego no encontrado', 'error'); mostrarCargando(false); } }catch(e){ showToast('Error BGG', 'error'); mostrarCargando(false); } }
+    async function cargarDetallesJuego(id){ try{ const res = await fetch(`${PROXY}${encodeURIComponent('https://boardgamegeek.com/xmlapi2/thing?id='+id+'&stats=1')}`); const item = new DOMParser().parseFromString(await res.text(), "text/xml").querySelector("item"); currentGameId = id; document.getElementById('game-title').innerText = item.querySelector("name[type='primary']")?.getAttribute("value")||"Juego"; document.getElementById('game-year').innerText = item.querySelector("yearpublished")?.getAttribute("value")||"N/A"; document.getElementById('game-players').innerText = `👥 ${item.querySelector("minplayers")?.getAttribute("value")||"?"}-${item.querySelector("maxplayers")?.getAttribute("value")||"?"}`; document.getElementById('game-time').innerText = `⏱️ ${item.querySelector("playingtime")?.getAttribute("value")||"?"} min`; document.getElementById('game-desc').innerHTML = item.querySelector("description")?.textContent||""; document.getElementById('game-img').src = item.querySelector("image")?.textContent||""; mostrarCargando(false); document.getElementById('game-card').classList.remove('hidden'); }catch(e){ showToast('Error cargando detalles', 'error'); mostrarCargando(false); } }
+    async function agregarAColeccion(){ const u=localStorage.getItem('bgg_user'), p=localStorage.getItem('bgg_pass'); if(!u||!p){ toggleLoginModal(); return; } try{ const res = await fetch(`${PROXY}${encodeURIComponent('https://boardgamegeek.com/geekcollection.php')}`, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({ action:'additem', objecttype:'thing', objectid:currentGameId, own:'1' }) }); if(res.ok) showToast('🎉 Añadido a tu colección', 'success'); else showToast('Error en BGG', 'error'); }catch(e){ showToast('Error de conexión', 'error'); } }
+    function mostrarCargando(f){ document.getElementById('loading').classList.toggle('hidden', !f); if(f) document.getElementById('game-card').classList.add('hidden'); }
+    function showToast(m, t='info'){ const toast = document.getElementById('toast'); toast.innerText = m; toast.className = `p-4 rounded-xl text-center text-sm font-semibold border ${t==='success'?'bg-emerald-900 border-emerald-500 text-emerald-200':t==='error'?'bg-rose-900 border-rose-500 text-rose-200':'bg-slate-800 border-amber-500 text-amber-200'}`; toast.classList.remove('hidden'); setTimeout(()=>toast.classList.add('hidden'), 4000); }
+  </script>
+</body>
+</html>
